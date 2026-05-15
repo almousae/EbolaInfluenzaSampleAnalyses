@@ -1,0 +1,146 @@
+---
+title: "Global Health Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Loop through files
+
+
+```{r}
+
+files <- paste0("file", 1:4, ".csv")
+merged_data <- NULL
+for (i in 1:4) {
+  df <- read.csv(files[i], stringsAsFactors = FALSE)
+  key_cols <- c("Entity", "Year", "Continent","Code")
+  non_key_cols <- setdiff(names(df), key_cols)
+  names(df)[names(df) %in% non_key_cols] <- paste0(non_key_cols, "_", i)
+  
+
+  if (is.null(merged_data)) {
+    merged_data <- df
+  } else {
+    merged_data <- merge(merged_data, df, by = key_cols, all = TRUE)
+  }
+}
+
+
+index_cols <- paste0("index_", 1:4)
+merged_data <- merged_data[ , !(names(merged_data) %in% index_cols)]
+
+
+merged_data <- merged_data[merged_data$Year >= 2000 & merged_data$Year <= 2019, ]
+
+
+old_names <- c("Population..historical.estimates._1", 
+               "Population..historical.estimates._2", 
+               "Population..historical.estimates._3", 
+               "Population..historical.estimates._4")
+
+new_names <- c("Population.estimates._schizophrenia","Population.estimates._eatingdisorder", 
+               "Population.estimates._bipolar", 
+               "Population.estimates._anxiety"
+               )
+
+
+for (i in 1:4) {
+  names(merged_data) <- gsub(old_names[i], new_names[i], names(merged_data))
+}
+
+
+```
+
+```{r,include=FALSE}
+library(ggplot2)
+library(sf)
+library(dplyr)
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+```
+
+
+```{r}
+
+
+map_data <- merged_data %>%
+  select(Entity, Prevalence...Schizophrenia...Sex..Male...Age..Age.standardized..Percent._1) %>%
+  filter(!is.na(Prevalence...Schizophrenia...Sex..Male...Age..Age.standardized..Percent._1))
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+merged_map_data <- world %>%
+  left_join(map_data, by = c("name" = "Entity"))
+
+ggplot(data = merged_map_data) +
+  geom_sf(aes(fill = Prevalence...Schizophrenia...Sex..Male...Age..Age.standardized..Percent._1)) +
+  scale_fill_viridis_c(name = "Prevalence (%)") + # Color scale for prevalence
+  theme_minimal() +
+  labs(title = "Schizophrenia Prevalence in Males (Age-Standardized)",
+       subtitle = "Prevalence of Schizophrenia by Country"
+       ) +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+
+```
+
+
+```{r}
+map_data <- merged_data %>%
+  select(Entity, Prevalence...Eating.disorders...Sex..Female...Age..Age.standardized..Percent._2) %>%
+  filter(!is.na(Prevalence...Eating.disorders...Sex..Female...Age..Age.standardized..Percent._2))
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+merged_map_data <- world %>%
+  left_join(map_data, by = c("name" = "Entity"))
+
+ggplot(data = merged_map_data) +
+  geom_sf(aes(fill = Prevalence...Eating.disorders...Sex..Female...Age..Age.standardized..Percent._2)) +
+  scale_fill_viridis_c(name = "Prevalence (%)") + # Color scale for prevalence
+  theme_minimal() +
+  labs(title = "Eating Disorder Prevalence in Females (Age-Standardized)",
+       subtitle = "Prevalence of Eating Disorders by Country (Female)") +
+  theme(axis.text = element_blank(), axis.ticks = element_blank())
+```
+
+
+
+
+```{r}
+library(dplyr)
+
+
+merged_data <- merged_data %>%
+  mutate(PrevalenceDifference = Prevalence...Eating.disorders...Sex..Female...Age..Age.standardized..Percent._2 - Prevalence...Eating.disorders...Sex..Male...Age..Age.standardized..Percent._2 )
+
+grouped_data <- merged_data %>%
+  group_by(Entity)
+
+summary_data <- grouped_data %>%
+  summarize(
+    MeanPrevalenceDifference = mean(PrevalenceDifference, na.rm = TRUE),  
+    CountFemaleEntries = sum(!is.na(Prevalence...Eating.disorders...Sex..Female...Age..Age.standardized..Percent._2), na.rm = TRUE),
+    CountMaleEntries = sum(!is.na(Prevalence...Eating.disorders...Sex..Male...Age..Age.standardized..Percent._2), na.rm = TRUE),
+    .groups = 'drop'  
+  )
+variance_data <- sapply(grouped_data$PrevalenceDifference, function(x) {
+  x <- na.omit(x)
+  if(length(x) > 1) {  
+    return(var(x)) 
+  } else {
+    return(NA)  
+  }
+})
+
+head(summary_data)
+
+```
+
+
+
+

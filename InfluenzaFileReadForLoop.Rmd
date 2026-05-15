@@ -1,0 +1,179 @@
+---
+title: "Influenza"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Use for loops to read through multiple datasets
+
+#Reduce datasets to only share common columns
+
+#Rename each dataset
+
+```{r}
+for (i in 2009:2014) {
+  file_name <- paste0("Influenza_", i, ".csv")
+  flu_data <- read.csv(file_name)
+  var_name <- paste0("data", i)
+
+  assign(var_name, flu_data)
+}
+
+c_columns <- Reduce(intersect, lapply(2009:2014, function(i) colnames(get(paste0("data", i)))) )
+
+for (i in 2009:2014) {
+  var_name <- paste0("data", i) 
+  current_data <- get(var_name)
+  current_data <- current_data[, c_columns, drop = FALSE]
+  assign(var_name, current_data)
+}
+
+
+
+```
+
+#Add year column to each dataset
+
+#Rbind data from 2009-2014
+
+```{r}
+
+years <- 2009:2014
+final_data <- NULL 
+
+for (year in years) {
+  dataset_name <- paste0("data", year)
+  dataset <- get(dataset_name)
+  dataset$year <- year  
+  final_data <- rbind(final_data, dataset)
+}
+head(final_data)
+```
+
+```{r,include=FALSE}
+library(dplyr)
+library(ggplot2)
+```
+
+#Plot data grouped by region and year
+
+```{r}
+summary_d <- final_data %>%
+  group_by(Region, year) %>% # Summarize combined_data by Region and Year
+  summarize(
+    total_patient_visits = sum(Total_Patient_Visits, na.rm = TRUE),  
+    total_ili = sum(Total_ILI, na.rm = TRUE)                        
+  )
+
+# Plot the data with adjustments
+ggplot(summary_d, aes(x = total_patient_visits, y = total_ili, color = Region)) + 
+  geom_point(aes(size = total_ili), alpha = 0.7) +  
+  scale_x_continuous(trans = 'log10') +  
+  scale_y_continuous(trans = 'log10') +  
+  theme_minimal() + 
+  labs(
+    title = "Influenza Total Visits vs Total ILI",
+    x = "Total Patient Visits (log scale)",
+    y = "Total ILI (log scale)"
+  )
+```
+
+#Filter for weeks 35 - 45 in year 2009
+
+```{r}
+
+
+#combined_data <- combined_data %>%
+#  mutate(week_year = as.numeric(paste0(year, #sprintf("%02d", Week))))
+data_selected_weeks <- final_data %>% 
+  filter(Week >= 200935 & Week <= 200945)
+
+week_plot <- data_selected_weeks %>%
+  group_by(Week) %>%
+  summarize(
+    total_patient_visits = sum(Total_Patient_Visits, na.rm = TRUE),
+    total_ili = sum(Total_ILI, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(week_plot, aes(x = Week, y = total_patient_visits, color = as.factor(Week))) + 
+  geom_line() +  
+  geom_point(size = 3) + 
+  theme_minimal() +
+  labs(
+    title = "Total Patient Visits for Influenza from August 24, 2009 to November 8, 2009",
+    x = "Week-Year (2009)",
+    y = "Total Patient Visits"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
+    legend.position = "none"  
+  )
+
+```
+
+#Historgram of 2010 Weighted ILI Data
+
+```{r}
+
+
+
+
+data_2010 <- final_data %>%
+  filter(year == 2010)
+
+
+ggplot(data_2010, aes(x = Perc_Weighted_ILI)) +
+  geom_histogram(bins = 10, fill = "blue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Weighted ILI (%) in 2010",
+    x = "Weighted ILI (%)",
+    y = "Frequency"
+  )
+
+
+```
+
+
+
+#Apply Sapply and cbind functions
+
+```{r}
+numeric_columns <- final_data[, 6:9]
+means <- sapply(numeric_columns, mean, na.rm = TRUE)
+
+
+SDs <- sapply(numeric_columns, sd, na.rm = TRUE)
+
+
+results_table <- cbind(means, SDs)
+
+results_table
+
+```
+#Show calculations by
+
+# a) method of using summarize 
+
+# b) method of using tapply function
+
+```{r}
+library(dplyr)
+
+summ <- final_data %>%
+  group_by(year) %>%
+  summarize(mean_visits = mean(Total_Patient_Visits, na.rm = TRUE))
+
+print(summ)
+
+```
+```{r}
+tapply(final_data$Total_Patient_Visits, final_data$year, mean, na.rm = TRUE)
+
+```
+

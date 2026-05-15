@@ -1,0 +1,348 @@
+---
+title: "Ebola"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(dplyr)
+library(stringr)
+library(lubridate)
+```
+
+```{r}
+library(outbreaks)
+data("ebola_sim")
+
+```
+
+
+#Capitalize first letter for male and female
+
+#Remove white space from hospital column
+
+#Create a delay_days column that defines difference between report_date and onset_date
+
+#Convert outcome column to lowercase, replace NA's with the word unknown
+
+#Convert dates to ymd format
+```{r}
+
+
+cleaned_ebola <- ebola_sim$linelist %>%
+  mutate(
+    gender = str_to_title(str_trim(gender)),
+    hospital = str_squish(hospital),
+    outcome = str_to_lower(str_replace_na(outcome, "unknown")),
+    onset_date = ymd(date_of_onset),
+    report_date = ymd(date_of_hospitalisation), 
+    delay_days = as.numeric(report_date - onset_date)
+  ) %>%
+  filter(!is.na(onset_date))
+
+
+```
+
+
+#Extract columns and show example of cbind function
+
+```{r}
+
+#cbind example
+dates <- as.character(cleaned_ebola$date_of_outcome)
+cases <- cleaned_ebola$outcome
+hospital <- cleaned_ebola$hospital
+cbind_ex <- cbind(dates, hospital, cases)
+head(data.frame(cbind_ex))
+```
+
+#Create a quarter column that shows the quarter of the year that date of hospitalsation occurred
+
+```{r}
+library(dplyr)
+library(lubridate)
+
+cleaned_ebola <- ebola_sim$linelist %>%
+  mutate(
+    date_of_hospitalisation = ymd(date_of_hospitalisation),
+    quarter_of_hospitalisation = quarter(date_of_hospitalisation, with_year = FALSE, fiscal_start = 1)
+  )
+
+```
+
+#Show list of distinct hospitals
+
+```{r}
+
+unique_hospitals <- cleaned_ebola %>%
+  filter(!is.na(hospital)) %>%
+  distinct(hospital)
+
+
+print(unique_hospitals)
+
+```
+#Create case when statement to clean incorrectly typed hospital names
+
+```{r}
+library(dplyr)
+library(stringr)
+
+cleaned_ebola <- cleaned_ebola %>%
+  mutate(
+    hospital = case_when(
+      str_detect(hospital, "Military Hospital") ~ "Military Hospital",
+      str_detect(hospital, "Connaught Hospital") ~ "Connaught Hospital",
+      str_detect(hospital, "Princess Christian Maternity Hospital") ~ "Princess Christian Maternity Hospital (PCMH)",
+      str_detect(hospital, "Rokupa Hospital") ~ "Rokupa Hospital",
+      str_detect(hospital, "Mitylira Hospital") ~ "Mitylira Hospital",
+      str_detect(hospital, "Rokupa Hopital") ~ "Rokupa Hospital",
+      str_detect(hospital, "Princess Christian Maternity Hopital") ~ "Princess Christian Maternity Hospital (PCMH)",
+      str_detect(hospital, "Connaught Hopital") ~ "Connaught Hospital",
+      str_detect(hospital, "Military Hopital") ~ "Military Hospital",
+      str_detect(hospital, "Mitylira Hopital") ~ "Mitylira Hospital",
+      TRUE ~ hospital  # Keep original name if no match is found
+    )
+  )
+
+```
+
+
+```{r}
+
+
+case_counts <- cleaned_ebola %>%
+  filter(
+    !is.na(hospital),
+    !is.na(quarter_of_hospitalisation),
+    year(date_of_hospitalisation) == 2014
+  ) %>%
+  group_by(hospital, quarter_of_hospitalisation) %>%
+  summarise(n_cases = n()) %>%
+  ungroup()
+
+```
+
+
+#Create a graph to count number of cases by quarter in 2024 and color coordinate by hospital name
+```{r}
+library(ggplot2)
+
+ggplot(case_counts, aes(x = quarter_of_hospitalisation, y = n_cases, fill = hospital)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Ebola Cases by Hospital and Quarter (2014)",
+    x = "Quarter of Hospitalisation",
+    y = "Number of Cases",
+    fill = "Hospital"
+  ) +
+  theme_minimal()
+
+```
+
+#Use pivot_wider function to make a table that shows the total number of hospitilisations per year by hospital name
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(lubridate) 
+
+hospital_case_counts <- cleaned_ebola %>%
+  mutate(year_of_hospitalisation = year(date_of_hospitalisation)) %>%  
+  group_by(hospital, year_of_hospitalisation) %>%
+  summarise(n_cases = n(), .groups = "drop")
+
+
+hospital_case_counts_wide <- hospital_case_counts %>%
+  pivot_wider(
+    names_from = hospital,
+    values_from = n_cases,
+    values_fill = list(n_cases = 0)
+  )
+
+hospital_case_counts_wide
+
+
+```
+#List number of NA's per column
+
+```{r}
+
+sapply(cleaned_ebola, function(x) sum(is.na(x)))
+
+```
+
+
+```{r}
+lapply(cleaned_ebola, summary)
+
+```
+
+```{r}
+
+survived_ebola <- subset(cleaned_ebola, outcome == "Recover")
+
+head(survived_ebola)
+
+
+```
+
+```{r}
+
+
+deaths_data <- cleaned_ebola %>%
+  filter(outcome == "Death" & !is.na(date_of_outcome)) %>% 
+  mutate(year = year(ymd(date_of_outcome))) %>%
+  group_by(year) %>%
+  summarise(deaths = n())  
+
+
+total_cases_by_year <- cleaned_ebola %>%
+  filter(!is.na(date_of_outcome)) %>%  
+  mutate(year = year(ymd(date_of_outcome))) %>%
+  group_by(year) %>%
+  summarise(total_cases = n()) 
+
+
+death_data <- left_join(deaths_data, total_cases_by_year, by = "year")
+
+
+death_data <- death_data %>%
+  mutate(death_rate = deaths / total_cases)
+
+
+ggplot(death_data, aes(x = factor(year), y = death_rate, fill = "red")) +
+  geom_bar(stat = "identity") +
+  labs(
+    title = "Death Rate by Year",
+    x = "Year",
+    y = "Death Rate (Proportion)"
+  ) +
+  theme_minimal()
+
+
+print(deaths_data)
+
+
+print(death_data)
+
+```
+
+```{r}
+
+
+
+cleaned_ebola <- cleaned_ebola %>%
+  mutate(year = year(ymd(date_of_outcome))) %>%
+  filter(!is.na(date_of_outcome)) 
+
+
+cases_per_year <- table(cleaned_ebola$year)
+
+
+deaths_data <- cleaned_ebola %>%
+  filter(outcome == "Death")
+
+
+deaths_per_year <- table(deaths_data$year)
+
+
+death_rate <- deaths_per_year / cases_per_year
+
+
+cat("Deaths by Year:\n")
+print(deaths_per_year)
+
+cat("\nDeath Rate by Year:\n")
+print(death_rate)
+
+
+
+mean_death_rate <- mean(death_rate, na.rm = TRUE)
+median_death_rate <- median(death_rate, na.rm = TRUE)
+sd_death_rate <- sd(death_rate, na.rm = TRUE)
+min_death_rate <- min(death_rate, na.rm = TRUE)
+max_death_rate <- max(death_rate, na.rm = TRUE)
+
+cat("\nSummary Statistics for Death Rate:\n")
+cat("Mean death rate:", mean_death_rate, "\n")
+cat("Median death rate:", median_death_rate, "\n")
+cat("Standard deviation:", sd_death_rate, "\n")
+cat("Min death rate:", min_death_rate, "\n")
+cat("Max death rate:", max_death_rate, "\n")
+
+```
+
+```{r}
+
+valid_rows <- !is.na(cleaned_ebola$date_of_outcome)
+data_valid <- cleaned_ebola[valid_rows, ]
+
+data_valid$year_outcome <- as.numeric(format(as.Date(data_valid$date_of_outcome), "%Y"))
+
+
+death_counts <- table(data_valid$year_outcome[data_valid$outcome == "Death"])
+
+
+total_counts <- table(data_valid$year_outcome)
+
+
+death_rate <- death_counts / total_counts
+
+
+print(death_counts)
+print(death_rate)
+
+```
+
+```{r}
+
+ebola_sub <- cleaned_ebola[!is.na(cleaned_ebola$outcome) & !is.na(cleaned_ebola$gender), ]
+
+
+ebola_sub$date_of_outcome <- as.Date(ebola_sub$date_of_outcome)
+ebola_sub$year <- format(ebola_sub$date_of_outcome, "%Y")
+
+
+gender_outcome_year <- table(ebola_sub$gender, ebola_sub$outcome, ebola_sub$year)
+
+
+print(gender_outcome_year)
+
+
+total_cases <- apply(gender_outcome_year, c(1, 3), sum)
+
+deaths_only <- gender_outcome_year[, "Death", ]
+
+
+death_rate <- deaths_only / total_cases
+
+
+cat("Death rates by gender and year:\n")
+print(round(death_rate, 3))
+
+```
+
+```{r}
+
+
+
+bar_locs <- barplot(death_rate,
+                    beside = TRUE,
+                    col = c("lightblue", "pink"),
+                    main = "Death Rate by Gender and Year",
+                    xlab = "Year",
+                    ylab = "Death Rate",
+                    ylim = c(0, 1),
+                    names.arg = colnames(death_rate))
+
+
+legend("topright",
+       legend = c("Male", "Female"),
+       fill = c("lightblue", "pink"),
+       title = "Gender")
+```
+
